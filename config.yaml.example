@@ -1,0 +1,16 @@
+telegram:
+  # Set TELEGRAM_BOT_TOKEN in the process environment. Never put a real token here.
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+
+  # Telegram user IDs allowed to control the bot. An empty list lets the first /start claim it.
+  allowed_user_ids: []
+
+database:
+  path: "./spreads.db"
+
+polling:
+  interval_seconds: 10 # allowed range: 5..300
+
+lighter:
+  core_api: "https://mainnet.zklighter.elliot.ai"
+  robinhood_api: "https://api.rh.lighter.xyz"

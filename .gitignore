@@ -1,0 +1,8 @@
+.env
+config.yaml
+*.db
+*.db-shm
+*.db-wal
+data/
+bin/
+/bot
