@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const maxWindowMinutes = 7 * 24 * 60
+
 func (b *Bot) handleMessage(ctx context.Context, chatID, userID int64, text string) {
 	if !b.authorized(ctx, chatID, userID) {
 		_ = b.send(ctx, chatID, "Доступ запрещён. Добавьте ваш Telegram user ID в config.yaml и перезапустите бота.")
@@ -19,7 +21,7 @@ func (b *Bot) handleMessage(ctx context.Context, chatID, userID int64, text stri
 	var reply string
 	switch strings.ToLower(strings.Split(parts[0], "@")[0]) {
 	case "/start", "/help":
-		reply = "Бот сравнивает текущий спред с медианой за окно.\n\n/add SYMBOL CORE_MARKET RH_MARKET WINDOW_MIN LOW HIGH\nПример: /add ANTHROPIC ANTHROPIC ANTHROPIC 15 -0.5 0.5\n/list — показать настройки\n/remove SYMBOL — удалить актив\n\nLOW и HIGH — границы отклонения текущего спреда от медианы в процентных пунктах. Если отклонение внутри диапазона, бот присылает уведомление раз в минуту. Маркер 🔴/🟢 показывает знак текущего спреда. Это уведомление, не торговый совет."
+		reply = "Бот сравнивает текущий спред с медианой за окно.\n\n/add SYMBOL CORE_MARKET RH_MARKET WINDOW LOW HIGH\nПример: /add ANTHROPIC ANTHROPIC ANTHROPIC 1h -0.5 0.5\nОкно можно указать в минутах (например, 60) или с суффиксом: 1h, 1d, 1w. Максимум — 1w; медиана обновляется раз в минуту.\n/list — показать настройки\n/remove SYMBOL — удалить актив\n\nLOW и HIGH — нижняя и верхняя границы отклонения спреда от медианы в процентных пунктах. Уведомление приходит только при отклонении строго выше HIGH (🟢) или строго ниже LOW (🔴). Внутри диапазона и точно на границах уведомлений нет. Это уведомление, не торговый совет."
 	case "/add":
 		reply = b.addMarket(ctx, parts)
 	case "/list":
@@ -46,19 +48,44 @@ func (b *Bot) handleMessage(ctx context.Context, chatID, userID int64, text stri
 
 func (b *Bot) addMarket(ctx context.Context, parts []string) string {
 	if len(parts) != 7 {
-		return "Использование: /add SYMBOL CORE_MARKET RH_MARKET WINDOW_MIN LOW% HIGH%"
+		return "Использование: /add SYMBOL CORE_MARKET RH_MARKET WINDOW LOW HIGH (например, 60, 1h, 1d или 1w)"
 	}
 	symbol, core, rh := strings.ToUpper(parts[1]), strings.ToUpper(parts[2]), strings.ToUpper(parts[3])
-	window, windowErr := strconv.Atoi(parts[4])
+	window, validWindow := parseWindowMinutes(parts[4])
 	low, lowErr := strconv.ParseFloat(parts[5], 64)
 	high, highErr := strconv.ParseFloat(parts[6], 64)
-	if len(symbol) > 32 || len(core) > 64 || len(rh) > 64 || window < 1 || window > 1440 || windowErr != nil || lowErr != nil || highErr != nil || low >= high || low < -100 || high > 100 {
-		return "Некорректные параметры: окно 1–1440 минут, границы от -100 до 100 и LOW < HIGH."
+	if len(symbol) > 32 || len(core) > 64 || len(rh) > 64 || !validWindow || lowErr != nil || highErr != nil || low >= high || low < -100 || high > 100 {
+		return "Некорректные параметры: окно в минутах или формате Nh/Nd/Nw (максимум 1w), границы от -100 до 100 и LOW < HIGH."
 	}
 	if err := b.saveMarket(ctx, symbol, core, rh, window, low, high); err != nil {
 		return "Не удалось сохранить настройки в SQLite"
 	}
-	return fmt.Sprintf("Настроено %s: окно %d мин., уведомления при отклонении текущего спреда от медианы в диапазоне [%.4f, %.4f] п.п. — не чаще раза в минуту. Проверьте, что рынки существуют на обеих площадках.", symbol, window, low, high)
+	return fmt.Sprintf("Настроено %s: окно %d мин. (максимум 10080 мин., обновление медианы раз в минуту), уведомления при отклонении строго выше %.4f п.п. или ниже %.4f п.п.; внутри диапазона уведомлений нет. Проверьте, что рынки существуют на обеих площадках.", symbol, window, high, low)
+}
+
+func parseWindowMinutes(input string) (int, bool) {
+	value := strings.ToLower(strings.TrimSpace(input))
+	factor := 1
+	if len(value) > 0 {
+		switch value[len(value)-1] {
+		case 'm':
+			value = value[:len(value)-1]
+		case 'h':
+			factor = 60
+			value = value[:len(value)-1]
+		case 'd':
+			factor = 24 * 60
+			value = value[:len(value)-1]
+		case 'w':
+			factor = 7 * 24 * 60
+			value = value[:len(value)-1]
+		}
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 1 || n > maxWindowMinutes/factor {
+		return 0, false
+	}
+	return n * factor, true
 }
 
 func (b *Bot) listMarkets(ctx context.Context) string {

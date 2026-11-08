@@ -101,6 +101,29 @@ func (b *Bot) notifyAll(ctx context.Context, text string) error {
 	return rows.Err()
 }
 
+func (b *Bot) notifyAllHTML(ctx context.Context, text string) error {
+	rows, err := b.db.QueryContext(ctx, "SELECT chat_id FROM users")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var chatID int64
+		if err := rows.Scan(&chatID); err != nil {
+			return err
+		}
+		params := url.Values{
+			"chat_id":    {strconv.FormatInt(chatID, 10)},
+			"text":       {text},
+			"parse_mode": {"HTML"},
+		}
+		if err := b.telegram(ctx, "sendMessage", params, nil); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
 func (b *Bot) Run(ctx context.Context) error {
 	log.Printf("bot started; spread polling interval=%s", b.cfg.PollInterval)
 	go func() {

@@ -46,8 +46,7 @@ VALUES(?,?,?,?,?,?,1,?) ON CONFLICT(symbol) DO UPDATE SET core_market=excluded.c
 	if err != nil {
 		return err
 	}
-	_, err = b.db.ExecContext(ctx, `INSERT INTO notification_schedule(symbol,last_in_range_sent_at) VALUES(?,0)
-ON CONFLICT(symbol) DO UPDATE SET last_in_range_sent_at=0`, symbol)
+	_, err = b.db.ExecContext(ctx, "INSERT OR IGNORE INTO notification_schedule(symbol,last_in_range_sent_at) VALUES(?,0)", symbol)
 	return err
 }
 

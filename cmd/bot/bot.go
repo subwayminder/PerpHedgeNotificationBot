@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -14,10 +15,12 @@ import (
 )
 
 type Bot struct {
-	cfg    Config
-	db     *sql.DB
-	client *http.Client
-	offset int64
+	cfg           Config
+	db            *sql.DB
+	client        *http.Client
+	offset        int64
+	medianCacheMu sync.Mutex
+	medianCache   map[string]cachedMedian
 }
 
 func NewBot(ctx context.Context) (*Bot, error) {
